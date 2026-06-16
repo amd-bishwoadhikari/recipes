@@ -208,14 +208,13 @@ Replace the image tag (`v0.22.0`) if you use a different release, and adjust `--
 Run the following **inside the container** from Step 1.
 
 ```bash
-export SAFETENSORS_FAST_GPU="1"
-export HIP_FORCE_DEV_KERNARG="1"
-export HIP_VISIBLE_DEVICES="0,1,2,3,4,5,6,7"
-export VLLM_WORKER_MULTIPROC_METHOD="spawn"
-export VLLM_ROCM_USE_AITER="1"
-export VLLM_ROCM_USE_AITER_MHA="1"
-export VLLM_ROCM_SHUFFLE_KV_CACHE_LAYOUT="1"
-
+SAFETENSORS_FAST_GPU="1"
+HIP_FORCE_DEV_KERNARG="1"
+HIP_VISIBLE_DEVICES="0,1,2,3,4,5,6,7"
+VLLM_WORKER_MULTIPROC_METHOD="spawn"
+VLLM_ROCM_USE_AITER="1"
+VLLM_ROCM_USE_AITER_MHA="1"
+VLLM_ROCM_SHUFFLE_KV_CACHE_LAYOUT="1"
 vllm serve Qwen/Qwen3-VL-235B-A22B-Instruct-FP8 \
   --tensor-parallel-size 8 \
   --mm-encoder-tp-mode data \
@@ -231,8 +230,6 @@ vllm serve Qwen/Qwen3-VL-235B-A22B-Instruct-FP8 \
   --compilation-config '{"mode": 3, "cudagraph_mode": "FULL_AND_PIECEWISE", "custom_ops": ["+rms_norm", "+quant_fp8"]}' \
   --attention-backend ROCM_AITER_FA
 ```
-
-This configuration is tested at **high concurrency** (upto 512) for context lengths up to 8k. If time-per-output-token (TPOT) is too high, reduce `--max-num-batched-tokens`. For longer contexts, lower `--max-num-seqs` and `--max-num-batched-tokens`.
 
 When startup finishes, the server log should include lines similar to the following:
 
