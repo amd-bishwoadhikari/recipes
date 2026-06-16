@@ -175,70 +175,92 @@ For more usage examples, check out the [vLLM user guide for multimodal models](h
 
 
 ## AMD GPU Support
-Recommended approaches by hardware type are:
 
+The instructions below target **MI300X / MI325X / MI355X** systems with the vLLM ROCm stack.
 
-MI300X/MI325X/MI355X 
+### Step 1: Install vLLM ROCm Docker image
 
-Please follow the steps here to install and run Qwen3-VL models on AMD MI300X/MI325X/MI355X GPU.
+Use the official **vLLM ROCm Docker image**. On the host, start an interactive shell in the container. **Steps 2 and 3** assume you are inside that shell, unless noted (for example, the benchmark client may run on the host or another machine with network access to the API).
 
-### Step 1: Installing vLLM (AMD ROCm Backend: MI300X, MI325X, MI355X) 
- > Note: The vLLM wheel for ROCm requires Python 3.12, ROCm 7.0, and glibc >= 2.35. If your environment does not meet these requirements, please use the Docker-based setup as described in the [documentation](https://docs.vllm.ai/en/latest/getting_started/installation/gpu/#pre-built-images).  
- ```bash 
- uv venv 
- source .venv/bin/activate 
- uv pip install vllm --extra-index-url https://wheels.vllm.ai/rocm/
- ```
+To access private Hugging Face assets, export `HF_TOKEN` on the host before `docker run`. If you do not need a token, remove the `--env` line from the command.
 
+```bash
+docker run -it --rm \
+  --name vllm-openai-rocm \
+  --entrypoint bash \
+  --device /dev/dri:/dev/dri \
+  --device /dev/kfd:/dev/kfd \
+  --group-add video \
+  --ipc host \
+  --network host \
+  --security-opt apparmor=unconfined \
+  --security-opt seccomp=unconfined \
+  --shm-size 128G \
+  -v /data/huggingface/hub:/root/.cache/huggingface/hub \
+  --env "HF_TOKEN=$HF_TOKEN" \
+  vllm/vllm-openai-rocm:v0.22.0
+```
+
+Replace the image tag (`v0.22.0`) if you use a different release, and adjust `--name`, the Hugging Face cache mount (`-v`), and other flags to match your environment.
 
 
 ### Step 2: Start the vLLM server
 
-Run the vllm online serving
+Run the following **inside the container** from Step 1.
 
-#### Inside the working dir, create a new directory named `miopen` .
-```shell
-mkdir "$(pwd)/miopen"
-```
+```bash
+export SAFETENSORS_FAST_GPU="1"
+export HIP_FORCE_DEV_KERNARG="1"
+export HIP_VISIBLE_DEVICES="0,1,2,3,4,5,6,7"
+export VLLM_WORKER_MULTIPROC_METHOD="spawn"
+export VLLM_ROCM_USE_AITER="1"
+export VLLM_ROCM_USE_AITER_MHA="1"
+export VLLM_ROCM_SHUFFLE_KV_CACHE_LAYOUT="1"
 
-### BF16 
-
-
-```shell
-MIOPEN_USER_DB_PATH="$(pwd)/miopen" \
-MIOPEN_FIND_MODE=FAST \
-VLLM_ROCM_USE_AITER=1 \
-SAFETENSORS_FAST_GPU=1 \
-vllm serve Qwen/Qwen3-VL-235B-A22B-Instruct \
---tensor-parallel 4 \
---mm-encoder-tp-mode data 
-```
-
-### FP8 
-
-```shell
-
-MIOPEN_USER_DB_PATH="$(pwd)/miopen" \
-MIOPEN_FIND_MODE=FAST \
-VLLM_USE_V1=1 \
-VLLM_ROCM_USE_AITER=1 \
-SAFETENSORS_FAST_GPU=1 \
 vllm serve Qwen/Qwen3-VL-235B-A22B-Instruct-FP8 \
---tensor-parallel  4 \
---mm-encoder-tp-mode "data" 
-
+  --tensor-parallel-size 8 \
+  --mm-encoder-tp-mode data \
+  --enable-expert-parallel \
+  --async-scheduling \
+  --enable-chunked-prefill \
+  --limit-mm-per-prompt '{"image": 1}' \
+  --gpu-memory-utilization 0.94 \
+  --max-model-len 32768 \
+  --max-num-seqs 10240 \
+  --max-num-batched-tokens 32768 \
+  --kv-cache-dtype fp8 \
+  --compilation-config '{"mode": 3, "cudagraph_mode": "FULL_AND_PIECEWISE", "custom_ops": ["+rms_norm", "+quant_fp8"]}' \
+  --attention-backend ROCM_AITER_FA
 ```
-### Step 3: Run Benchmark
-```shell
- vllm bench serve \
-  --model Qwen/Qwen3-VL-235B-A22B-Instruct \
-  --dataset-name random \
-  --random-input-len 8192 \
-  --random-output-len 1024 \
-  --request-rate 10000 \
-  --num-prompts 16 \
-  --ignore-eos 
+
+This configuration runs efficiently at high concurrencies (up to 512) for context lengths up to about 8k tokens. If time-per-output token (TPOT) is unsatisfactory, reduce `--max-num-batched-tokens`. For longer contexts, retune `--max-num-seqs` and `--max-num-batched-tokens`. If the deployment is **image-only**, tighten multimodal limits (for example, cap video to `0` via `--limit-mm-per-prompt`) to reduce memory use.
+
+When startup completes, the server log should include lines similar to:
+
+```text
+INFO:     Started server process [pid]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
 ```
 
+### Step 3: Run benchmarks
 
-  
+After the server is accepting traffic, run the benchmark from a **separate** terminal.
+
+```bash
+vllm bench serve \
+  --backend openai-chat \
+  --endpoint /v1/chat/completions \
+  --model Qwen/Qwen3-VL-235B-A22B-Instruct-FP8 \
+  --num-prompts 1000 \
+  --num-warmups 10 \
+  --request-rate 20 \
+  --dataset-name random-mm \
+  --random-input-len 1024 \
+  --random-output-len 512 \
+  --random-mm-base-items-per-request 1 \
+  --random-mm-limit-mm-per-prompt '{"image": 1, "video": 0}' \
+  --random-mm-bucket-config '{(512, 512, 1): 1.0}' \
+  --ignore-eos
+```
+
