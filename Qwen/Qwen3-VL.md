@@ -178,11 +178,11 @@ For more usage examples, check out the [vLLM user guide for multimodal models](h
 
 The instructions below target **MI300X / MI325X / MI355X** systems with the vLLM ROCm stack.
 
-### Step 1: Install vLLM ROCm Docker image
+### Step 1: Install the vLLM ROCm Docker image
 
-Use the official **vLLM ROCm Docker image**. On the host, start an interactive shell in the container. **Steps 2 and 3** assume you are inside that shell, unless noted (for example, the benchmark client may run on the host or another machine with network access to the API).
+Use the official **vLLM ROCm Docker image** ([`vllm/vllm-openai-rocm` on Docker Hub](https://hub.docker.com/r/vllm/vllm-openai-rocm)). On the host, start an interactive shell in the container. **Steps 2 and 3** assume commands run **inside** that shell unless stated otherwise (the benchmark client may run on the host or another machine with network access to the API).
 
-To access private Hugging Face assets, export `HF_TOKEN` on the host before `docker run`. If you do not need a token, remove the `--env` line from the command.
+To access private Hugging Face assets, export `HF_TOKEN` on the host before `docker run`. If you do not need a token, remove the `--env` line.
 
 ```bash
 docker run -it --rm \
@@ -202,7 +202,6 @@ docker run -it --rm \
 ```
 
 Replace the image tag (`v0.22.0`) if you use a different release, and adjust `--name`, the Hugging Face cache mount (`-v`), and other flags to match your environment.
-
 
 ### Step 2: Start the vLLM server
 
@@ -233,9 +232,9 @@ vllm serve Qwen/Qwen3-VL-235B-A22B-Instruct-FP8 \
   --attention-backend ROCM_AITER_FA
 ```
 
-This configuration runs efficiently at high concurrencies (up to 512) for context lengths up to about 8k tokens. If time-per-output token (TPOT) is unsatisfactory, reduce `--max-num-batched-tokens`. For longer contexts, retune `--max-num-seqs` and `--max-num-batched-tokens`. If the deployment is **image-only**, tighten multimodal limits (for example, cap video to `0` via `--limit-mm-per-prompt`) to reduce memory use.
+This configuration is tested at **high concurrency** (upto 512) for context lengths up to 8k. If time-per-output-token (TPOT) is too high, reduce `--max-num-batched-tokens`. For longer contexts, lower `--max-num-seqs` and `--max-num-batched-tokens`.
 
-When startup completes, the server log should include lines similar to:
+When startup finishes, the server log should include lines similar to the following:
 
 ```text
 INFO:     Started server process [pid]
@@ -245,7 +244,7 @@ INFO:     Application startup complete.
 
 ### Step 3: Run benchmarks
 
-After the server is accepting traffic, run the benchmark from a **separate** terminal.
+After the server is accepting traffic, run the benchmarks from a **separate** terminal. The example below uses `vllm bench serve` with the **`random-mm`** synthetic multimodal dataset ([`RandomMultiModalDataset`](https://docs.vllm.ai/en/latest/api/vllm/benchmarks/datasets/#vllm.benchmarks.datasets.RandomMultiModalDataset) in the vLLM docs).
 
 ```bash
 vllm bench serve \
@@ -263,4 +262,3 @@ vllm bench serve \
   --random-mm-bucket-config '{(512, 512, 1): 1.0}' \
   --ignore-eos
 ```
-
