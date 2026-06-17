@@ -237,6 +237,7 @@ vllm serve Qwen/Qwen3-VL-235B-A22B-Instruct \
   --max-model-len 32768 \
   --max-num-seqs 10240 \
   --max-num-batched-tokens 32768 \
+  --attention-backend ROCM_AITER_FA ## ['ROCM_ATTN', 'ROCM_AITER_FA', 'ROCM_AITER_UNIFIED_ATTN', 'TRITON_ATTN'] are available options to change attention-backend
 ```
 
 #### FP8 — `Qwen/Qwen3-VL-235B-A22B-Instruct-FP8`
@@ -264,7 +265,8 @@ vllm serve Qwen/Qwen3-VL-235B-A22B-Instruct-FP8 \
   --max-num-seqs 10240 \
   --max-num-batched-tokens 32768 \
   --kv-cache-dtype fp8 \
-  --compilation-config '{"mode": 3, "cudagraph_mode": "FULL_AND_PIECEWISE", "custom_ops": ["+rms_norm", "+quant_fp8"]}'
+  --compilation-config '{"mode": 3, "cudagraph_mode": "FULL_AND_PIECEWISE", "custom_ops": ["+rms_norm", "+quant_fp8"]}' \
+  --attention-backend ROCM_AITER_FA  ## ['ROCM_ATTN', 'ROCM_AITER_FA', 'ROCM_AITER_UNIFIED_ATTN', 'TRITON_ATTN'] are available options to change attention-backend
 ```
 
 **Tuning (FP8 launch above):** If time-per-output-token (TPOT) is too high, reduce `--max-num-batched-tokens`. For longer contexts, retune `--max-num-seqs` and `--max-num-batched-tokens`. For **image-only** serving, narrow multimodal limits (for example set video to `0` in `--limit-mm-per-prompt`) to save memory.
